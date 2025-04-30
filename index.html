@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOTK Great Sky Island Korok Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+
+    <!-- Font -->
+    <style>
+        @font-face {
+            font-family: 'Hylia Serif Beta';
+            src: url('HyliaSerifBeta-Regular.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+        }
+    </style>
+
+    <!-- PapaParse for loading CSVs -->
+    <script src="https://unpkg.com/papaparse@5.3.2/papaparse.min.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            background-color: #1A4D2E;
+            color: #FFC72C;
+            padding: 8px 5px;
+        }
+        .header-title {
+            font-family: 'Hylia Serif Beta', serif;
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            font-family: 'Hylia Serif Beta', serif;
+            font-size: 0.9rem;
+        }
+        .filters select {
+            font-family: 'Hylia Serif Beta', serif;
+            font-size: 0.9rem;
+            padding: 2px 4px;
+            border-radius: 4px;
+            background-color: white;
+            color: #1A4D2E;
+            max-width: 140px;
+        }
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .toggle-container label {
+            font-family: 'Hylia Serif Beta', serif;
+            font-size: 0.9rem;
+        }
+        #map {
+            flex-grow: 1;
+            width: 100%;
+        }
+        footer {
+            background-color: #1A4D2E;
+            color: #FFC72C;
+            padding: 8px 5px;
+            text-align: center;
+        }
+        .stats {
+            font-family: 'Hylia Serif Beta', serif;
+            font-size: 1rem;
+        }
+        .korok-popup {
+            text-align: center;
+        }
+        .korok-popup button {
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .korok-popup button.found {
+            background-color: #BDEAE0;
+        }
+        .marker-found {
+            filter: grayscale(100%);
+            opacity: 0.3;
+        }
+        @media (min-width: 768px) {
+            .header-title {
+                font-size: 1.5rem;
+            }
+            .filters {
+                font-size: 1rem;
+                gap: 20px;
+            }
+            .filters select {
+                font-size: 1rem;
+                padding: 4px 8px;
+                max-width: none;
+            }
+            .toggle-container label {
+                font-size: 1rem;
+            }
+            .stats {
+                font-size: 1.2rem;
+            }
+            footer {
+                padding: 10px;
+            }
+        }
+
+        .playwrite-au-sa {
+          font-family: "Playwrite AU SA", cursive;
+          font-optical-sizing: auto;
+          font-weight: 400;
+          font-style: normal;
+          text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <header>
+        <div class="header-title">Great Sky Island Korok Map</div>
+        <div class="filters">
+            <select id="region-filter">
+                <option value="all">All Regions</option>
+            </select>
+            <select id="location-filter">
+                <option value="all">All Locations</option>
+            </select>
+            <div class="toggle-container">
+                <label for="show-found">Show Found</label>
+                <input type="checkbox" id="show-found" checked>
+            </div>
+        </div>
+    </header>
+    <div id="map"></div>
+    <footer>
+        <div class="stats">
+            <span id="found-count">0</span> / <span id="total-count">0</span> Koroks Found
+        </div>
+    </footer>
+</div>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+let map;
+let markers = [];
+
+const customKorokIcon = L.icon({
+    iconUrl: 'images/Seed.png',
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -35]
+});
+
+const korokData = [
+  { "id": "GSI-1", "coordinates": [-3219, 3376], "type": "Lift Rock", "description": "On top of archway on the same level as Kahatanum Shrine", "found": false },
+  { "id": "GSI-2", "coordinates": [-3103, 3259], "type": "Light Ring", "description": "Near the flying boat", "found": false },
+  { "id": "GSI-3", "coordinates": [-3915, 2876], "type": "Glide to Stump", "description": "There is a button on the north side of the island", "found": false },
+  { "id": "GSI-4", "coordinates": [-3056, 2137], "type": "Glide to Stump", "description": "Land on the flying stone with the single tree", "found": false },
+  { "id": "GSI-5", "coordinates": [-1716, 3561], "type": "Flowers", "description": "In the hollow tree trunk", "found": false },
+  { "id": "GSI-6", "coordinates": [-1667, 3282], "type": "Glide to Stump", "description": "On the side of the island facing north-east the is a korok stump", "found": false },
+  { "id": "GSI-29", "coordinates": [464, -881], "type": "Ascend Through Stump", "description": "The broken pillar underneath the Temple of Time (you'll see a small wooden stump sticking out of the top part of the pillar)", "found": false },
+  { "id": "GSI-30", "coordinates": [253, -821], "type": "Chase Lights", "description": "On the upper ledge, near the ruins at the edge", "found": false },
+  { "id": "GSI-31", "coordinates": [113, -1078], "type": "Lift Rock", "description": "On the tiny island in the middle of the lake", "found": false },
+  { "id": "GSI-32", "coordinates": [20, -1261], "type": "Build Puzzle", "description": "By the bank of the river, next to the railway tracks", "found": false },
+  { "id": "GSI-33", "coordinates": [20, -1261], "type": "Build Puzzle", "description": "Sitting by a campfire", "found": false },
+  { "id": "GSI-34", "coordinates": [519, -1321], "type": "Flowers", "description": "Nearby a large tree in the ruins", "found": false },
+  { "id": "GSI-35", "coordinates": [766, -1340], "type": "Rock Pattern", "description": "At the top of the giant hollow tree trunk", "found": false },
+  { "id": "GSI-36", "coordinates": [312, -1441], "type": "Glide to Stump", "description": "In the pond of the island floating high in the air", "found": false },
+  { "id": "GSI-37", "coordinates": [424, -1503], "type": "Rock Pattern", "description": "A tree on a high, floating island accessible with a glider or paraglider from above", "found": false },
+  { "id": "GSI-38", "coordinates": [456, -1531], "type": "Shoot Target", "description": "Found in a hole (blow up the rocks), up the steps on the eastern side of the large flowing river", "found": false },
+  { "id": "GSI-39", "coordinates": [545, -1582], "type": "Block Puzzle", "description": "On the edge of the long broken stone bridge that overlooks the island", "found": false },
+  { "id": "GSI-40", "coordinates": [629, -1525], "type": "Block Puzzle", "description": "Underneath the large platform - on the same level as the freezing river to the north. Accessible by using the Motorboats to cross the freezing river", "found": false },
+  { "id": "GSI-41", "coordinates": [621, -1659], "type": "Flowers", "description": "The dandelion on top of the snowy hill", "found": false },
+  { "id": "GSI-42", "coordinates": [444, -1784], "type": "Find Friend", "description": "Korok asks you to help reach their friend to the south. You can make a minecart vehicle and put them in it to reach the other Korok", "found": false },
+  { "id": "GSI-43", "coordinates": [444, -1784], "type": "Find Friend", "description": "At a camp on the island. Korok has been separated from their friend to the north", "found": false },
+  { "id": "GSI-44", "coordinates": [376, -1732], "type": "Glide to Stump", "description": "Above the Nachoyah Shrine, in the giant hollow tree stump. Use Ascend to access", "found": false },
+  { "id": "GSI-45", "coordinates": [346, -1755], "type": "Chase Lights", "description": "Behind you in the Room of Awakening, beneath the roots of a tree. Available only after leaving Great Sky Island to go to Hyrule. Fast travel back to collect the seed", "found": false },
+  { "id": "GSI-46", "coordinates": [230, -1643], "type": "Burn Leaves", "description": "Inside the giant hollow tree stump", "found": false },
+  { "id": "GSI-47", "coordinates": [23, -1559], "type": "Lift Rock", "description": "Inside a large tree at the top of the hill beside the In-isa Shrine", "found": false }
+];
+
+function transformKorokCoordinates() {
+  // Reference points array with game coordinates and corresponding map pixel coordinates
+  const referencePoints = [
+    { gameCoords: [766, -1340], mapCoords: [1032, 1910] },
+    { gameCoords: [464, -881], mapCoords: [1168, 1815] },
+    { gameCoords: [-3915, 2876], mapCoords: [2294, 502] },  // GSI-3 reference point
+    { gameCoords: [-2366, 861], mapCoords: [1680, 965] },  // GSI-18 reference point
+    { gameCoords: [-3374, 12], mapCoords: [1439, 664] },   // GSI-23 reference point
+    { gameCoords: [-684, 3534], mapCoords: [2494, 1470] }, // GSI-7 reference point
+    { gameCoords: [-1708, -3583], mapCoords: [362, 1159] }, // GSI-24 reference point
+    { gameCoords: [-794, -1601], mapCoords: [956, 1439] }, // GSI-27 reference point
+    { gameCoords: [-1829, -1918], mapCoords: [856, 1127] }, // GSI-25 reference point
+    { gameCoords: [127, -2503], mapCoords: [682, 1714] },  // GSI-28 reference point
+    { gameCoords: [4794, 3754], mapCoords: [2558, 3112] }, // GSI-10 reference point
+    { gameCoords: [1690, 1192], mapCoords: [1791, 2183] }, // GSI-17 reference point
+    { gameCoords: [-1752, 2344], mapCoords: [908, 2380] }, // GSI-54 reference point
+    { gameCoords: [-3219, 3376], mapCoords: [2453, 689] }, // GSI-1 reference point
+    { gameCoords: [-3103, 3259], mapCoords: [2432, 738] }, // GSI-2 reference point
+    { gameCoords: [-2988, 2935], mapCoords: [540, 2558] }, // GSI-58 reference point
+    { gameCoords: [2719, -2738], mapCoords: [612, 2492] }, // GSI-57 reference point
+    { gameCoords: [-1716, 3561], mapCoords: [2503, 1161] }, // GSI-5 reference point
+    { gameCoords: [-1667, 3282], mapCoords: [2415, 1173] }, // GSI-6 reference point
+    { gameCoords: [-3056, 2137], mapCoords: [2078, 757] }  // GSI-4 reference point
+  ];
+
+  // Function to calculate distance between two points
+  const distance = (p1, p2) => {
+    return Math.sqrt(Math.pow(p2[0] - p1[0], 2) + Math.pow(p2[1] - p1[1], 2));
+  };
+
+  // Transform each korok point
+  korokData.forEach(k => {
+    // Find the closest reference points
+    const distances = referencePoints.map(ref => ({
+      ref,
+      dist: distance(k.coordinates, ref.gameCoords)
+    })).sort((a, b) => a.dist - b.dist);
+
+    // Use the two closest reference points
+    const ref1 = distances[0].ref;
+    const ref2 = distances[1].ref;
+
+    // Calculate scales based on the closest reference points
+    const xScale = (ref2.mapCoords[1] - ref1.mapCoords[1]) / (ref2.gameCoords[0] - ref1.gameCoords[0]);
+    const yScale = (ref2.mapCoords[0] - ref1.mapCoords[0]) / (ref2.gameCoords[1] - ref1.gameCoords[1]);
+
+    // Calculate offsets
+    const xOffset = ref1.mapCoords[1] - (ref1.gameCoords[0] * xScale);
+    const yOffset = ref1.mapCoords[0] - (ref1.gameCoords[1] * yScale);
+
+    // Apply transformation
+    k.coordinates = [
+      yOffset + k.coordinates[1] * yScale,
+      xOffset + k.coordinates[0] * xScale
+    ];
+  });
+}
+
+function addKorokMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  korokData.forEach(k => {
+    const marker = L.marker(k.coordinates, { 
+      title: k.id, 
+      icon: customKorokIcon,
+      opacity: k.found ? 0.3 : 1.0,
+      className: k.found ? 'marker-found' : ''
+    });
+    
+    const popup = document.createElement('div');
+    popup.className = 'korok-popup';
+    popup.innerHTML = `
+      <h3>${k.id}</h3>
+      <p><strong>Game Coordinates:</strong> X: ${k.gameCoordinates ? k.gameCoordinates[0] : k.coordinates[0]}, Y: ${k.gameCoordinates ? k.gameCoordinates[1] : k.coordinates[1]}</p>
+      <p><strong>Type:</strong> ${k.type}</p>
+      <p>${k.description}</p>
+      <button class="${k.found ? 'found' : ''}" data-id="${k.id}">${k.found ? 'Mark as Not Found' : 'Mark as Found'}</button>
+    `;
+    
+    marker.bindPopup(popup);
+    marker.on('popupopen', () => {
+      const btn = document.querySelector(`.korok-popup button[data-id="${k.id}"]`);
+      if (btn) btn.addEventListener('click', () => toggleKorokFound(k.id));
+    });
+    marker.addTo(map);
+    markers.push(marker);
+  });
+}
+
+function toggleKorokFound(id) {
+  const k = korokData.find(x => x.id === id);
+  if (k) {
+    k.found = !k.found;
+    saveData();
+    addKorokMarkers();
+    updateStats();
+    filterMarkers();
+  }
+}
+
+function updateStats() {
+  document.getElementById('found-count').textContent = korokData.filter(k => k.found).length;
+  document.getElementById('total-count').textContent = korokData.length;
+}
+
+function calculateMarkerCenter(markers) {
+  if (markers.length === 0) return null;
+  
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  
+  markers.forEach(marker => {
+    const latLng = marker.getLatLng();
+    minLat = Math.min(minLat, latLng.lat);
+    maxLat = Math.max(maxLat, latLng.lat);
+    minLng = Math.min(minLng, latLng.lng);
+    maxLng = Math.max(maxLng, latLng.lng);
+  });
+  
+  return {
+    center: [minLat + (maxLat - minLat) / 2, minLng + (maxLng - minLng) / 2],
+    bounds: [[minLat, minLng], [maxLat, maxLng]]
+  };
+}
+
+function filterMarkers() {
+  const region = document.getElementById('region-filter').value;
+  const location = document.getElementById('location-filter').value;
+  const showFound = document.getElementById('show-found').checked;
+  
+  let visibleMarkers = [];
+  let visibleCoordinates = [];
+  
+  korokData.forEach((k, i) => {
+    const regionMatch = region === 'all' || k.region === region;
+    const locationMatch = location === 'all' || k.location === location;
+    const match = (regionMatch && locationMatch) && (showFound || !k.found);
+    
+    if (match && !map.hasLayer(markers[i])) {
+      map.addLayer(markers[i]);
+      visibleMarkers.push(markers[i]);
+      visibleCoordinates.push(k.coordinates);
+    } else if (!match && map.hasLayer(markers[i])) {
+      map.removeLayer(markers[i]);
+    }
+  });
+
+  // If there are visible markers and a specific region is selected, center the map on them
+  if (visibleCoordinates.length > 0 && region !== 'all') {
+    // Calculate the center of the visible coordinates
+    const center = visibleCoordinates.reduce((acc, coord) => {
+      return [acc[0] + coord[0], acc[1] + coord[1]];
+    }, [0, 0]).map(sum => sum / visibleCoordinates.length);
+
+    // Calculate the bounds
+    const bounds = visibleCoordinates.reduce((acc, coord) => {
+      return [
+        [Math.min(acc[0][0], coord[0]), Math.min(acc[0][1], coord[1])],
+        [Math.max(acc[1][0], coord[0]), Math.max(acc[1][1], coord[1])]
+      ];
+    }, [[Infinity, Infinity], [-Infinity, -Infinity]]);
+
+    // Set the view to the center
+    map.setView(center, 0);
+    
+    // After a short delay, adjust the view to fit all markers
+    setTimeout(() => {
+      map.fitBounds(bounds, {
+        padding: [50, 50],
+        maxZoom: 0
+      });
+    }, 100);
+  }
+}
+
+function updateLocationFilter(region) {
+  const locationFilter = document.getElementById('location-filter');
+  locationFilter.innerHTML = '<option value="all">All Locations</option>';
+  
+  if (region === 'all') return;
+  
+  const locations = new Set();
+  korokData.forEach(k => {
+    if (k.region === region && k.location) {
+      locations.add(k.location);
+    }
+  });
+  
+  locations.forEach(location => {
+    const option = document.createElement('option');
+    option.value = location;
+    option.textContent = location;
+    locationFilter.appendChild(option);
+  });
+}
+
+function saveData() {
+  localStorage.setItem('korokMapData', JSON.stringify(korokData.map(k => ({ id: k.id, found: k.found }))));
+}
+
+function loadSavedData() {
+  const data = localStorage.getItem('korokMapData');
+  if (data) JSON.parse(data).forEach(saved => {
+    const k = korokData.find(k => k.id === saved.id);
+    if (k) k.found = saved.found;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadSavedData();
+  map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 1 });
+  const bounds = [[0, 0], [2780, 3310]];
+  L.imageOverlay('images/zelda-tears-of-the-kingdom-sky-map-all-shrine-locations.jpg', bounds).addTo(map);
+  map.fitBounds(bounds);
+
+  fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://docs.google.com/spreadsheets/d/1KTA29OXzx8CBIQMB_yM9Gy_mbS2QnQmWiWBIO18z420/gviz/tq?tqx=out:csv'))
+    .then(r => r.text())
+    .then(csv => {
+      const parsed = Papa.parse(csv, { header: true });
+      const regions = new Set();
+      const locationsByRegion = new Map();
+      
+      // Get list of hardcoded IDs
+      const hardcodedIds = korokData.map(k => k.id);
+      
+      // Add markers from Google Sheet that aren't hardcoded
+      parsed.data.forEach(seed => {
+        if (seed.ID && !hardcodedIds.includes(seed.ID) && seed["Coordinates (X)"] && seed["Coordinates (Y)"]) {
+          const newKorok = {
+            id: seed.ID,
+            coordinates: [parseFloat(seed["Coordinates (X)"]), parseFloat(seed["Coordinates (Y)"])],
+            gameCoordinates: [parseFloat(seed["Coordinates (X)"]), parseFloat(seed["Coordinates (Y)"])],
+            region: seed.Region,
+            location: seed.Location,
+            type: seed["Puzzle Type"],
+            description: seed.Description || "No description provided",
+            found: false
+          };
+          korokData.push(newKorok);
+        }
+        if (seed.Region) {
+          regions.add(seed.Region);
+          if (!locationsByRegion.has(seed.Region)) {
+            locationsByRegion.set(seed.Region, new Set());
+          }
+          if (seed.Location) {
+            locationsByRegion.get(seed.Region).add(seed.Location);
+          }
+        }
+      });
+
+      // Update hardcoded markers with their region and location
+      parsed.data.forEach(seed => {
+        if (seed.ID && hardcodedIds.includes(seed.ID)) {
+          const marker = korokData.find(k => k.id === seed.ID);
+          if (marker) {
+            marker.gameCoordinates = [parseFloat(seed["Coordinates (X)"]), parseFloat(seed["Coordinates (Y)"])];
+            marker.region = seed.Region;
+            marker.location = seed.Location;
+          }
+        }
+      });
+
+      // Populate region filter
+      const regionFilter = document.getElementById('region-filter');
+      regions.forEach(region => {
+        const option = document.createElement('option');
+        option.value = region;
+        option.textContent = region;
+        regionFilter.appendChild(option);
+      });
+
+      // Add event listeners for filters
+      document.getElementById('region-filter').addEventListener('change', (e) => {
+        updateLocationFilter(e.target.value);
+        filterMarkers();
+      });
+      document.getElementById('location-filter').addEventListener('change', filterMarkers);
+      document.getElementById('show-found').addEventListener('change', filterMarkers);
+
+      transformKorokCoordinates();
+      addKorokMarkers();
+      updateStats();
+    })
+    .catch(error => {
+      console.error('Error loading data:', error);
+    });
+});
+</script>
+</body>
+</html>
